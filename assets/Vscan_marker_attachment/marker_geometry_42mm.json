@@ -1,0 +1,606 @@
+{
+  "schema": "probe_attachment_marker_geometry",
+  "schema_version": 1,
+  "status": "NOMINAL DESIGN GEOMETRY - NOT CALIBRATED",
+  "compatibility_note": "Self-describing geometry reference. Not guaranteed to be a drop-in marker_model.json for any tracking software; map fields and axis conventions to your application.",
+  "units": "mm",
+  "dictionary": "DICT_4X4_50",
+  "dictionary_family": "OpenCV ArUco",
+  "cube_side_mm": 42.0,
+  "marker_black_border_outer_side_mm": 32.0,
+  "paper_cutout_side_mm": 40.0,
+  "white_margin_mm": 4.0,
+  "paper_edge_inset_from_nominal_cube_face_edge_mm": 1.0,
+  "source_marker_pdf": "print_patterns_ja.pdf, page 1",
+  "source_marker_pdf_sha256": "8291ffca8da2aac250075c682e77af3e48deed7cc4877729a1da96a8da9b98c6",
+  "source_to_new_black_marker_linear_scale": 0.8,
+  "new_label_pdf_print_scale_percent": 100,
+  "coordinate_frame": {
+    "name": "marker_cube",
+    "handedness": "right-handed",
+    "origin": "nominal center of 42 mm cube",
+    "axes": "ID 0 is +Z; -Z face is mounting face; side labels have paper up along +Z",
+    "corner_order": [
+      "top_left",
+      "top_right",
+      "bottom_right",
+      "bottom_left"
+    ],
+    "corner_view": "Looking directly at the printed face from outside, with the paper-up direction at the top.",
+    "corner_boundary": "Outer corners of the 32 mm black marker border, excluding white paper margin."
+  },
+  "marker_plane_surface_offset_mm": 0.0,
+  "surface_offset_note": "Nominal coordinates lie on printed plastic face planes at ±21 mm. Add measured total paper + adhesive thickness along each outward normal to its center and all four corners, or measure the assembled corner positions. Face-specific deviations require face-specific updates.",
+  "mount_face": "-Z",
+  "markers": [
+    {
+      "id": 0,
+      "face": "+Z",
+      "face_center_mm": [
+        0.0,
+        0.0,
+        21.0
+      ],
+      "outward_normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "paper_up_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "paper_right_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "marker_center_mm": [
+        0.0,
+        0.0,
+        21.0
+      ],
+      "black_border_outer_corners_mm": [
+        [
+          -16.0,
+          16.0,
+          21.0
+        ],
+        [
+          16.0,
+          16.0,
+          21.0
+        ],
+        [
+          16.0,
+          -16.0,
+          21.0
+        ],
+        [
+          -16.0,
+          -16.0,
+          21.0
+        ]
+      ],
+      "print_pattern_6x6_rows_top_to_bottom_0_black_1_white": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": 1,
+      "face": "+X",
+      "face_center_mm": [
+        21.0,
+        0.0,
+        0.0
+      ],
+      "outward_normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "paper_up_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "paper_right_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "marker_center_mm": [
+        21.0,
+        0.0,
+        0.0
+      ],
+      "black_border_outer_corners_mm": [
+        [
+          21.0,
+          -16.0,
+          16.0
+        ],
+        [
+          21.0,
+          16.0,
+          16.0
+        ],
+        [
+          21.0,
+          16.0,
+          -16.0
+        ],
+        [
+          21.0,
+          -16.0,
+          -16.0
+        ]
+      ],
+      "print_pattern_6x6_rows_top_to_bottom_0_black_1_white": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": 2,
+      "face": "+Y",
+      "face_center_mm": [
+        0.0,
+        21.0,
+        0.0
+      ],
+      "outward_normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "paper_up_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "paper_right_axis": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "marker_center_mm": [
+        0.0,
+        21.0,
+        0.0
+      ],
+      "black_border_outer_corners_mm": [
+        [
+          16.0,
+          21.0,
+          16.0
+        ],
+        [
+          -16.0,
+          21.0,
+          16.0
+        ],
+        [
+          -16.0,
+          21.0,
+          -16.0
+        ],
+        [
+          16.0,
+          21.0,
+          -16.0
+        ]
+      ],
+      "print_pattern_6x6_rows_top_to_bottom_0_black_1_white": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": 3,
+      "face": "-X",
+      "face_center_mm": [
+        -21.0,
+        0.0,
+        0.0
+      ],
+      "outward_normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "paper_up_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "paper_right_axis": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "marker_center_mm": [
+        -21.0,
+        0.0,
+        0.0
+      ],
+      "black_border_outer_corners_mm": [
+        [
+          -21.0,
+          16.0,
+          16.0
+        ],
+        [
+          -21.0,
+          -16.0,
+          16.0
+        ],
+        [
+          -21.0,
+          -16.0,
+          -16.0
+        ],
+        [
+          -21.0,
+          16.0,
+          -16.0
+        ]
+      ],
+      "print_pattern_6x6_rows_top_to_bottom_0_black_1_white": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": 4,
+      "face": "-Y",
+      "face_center_mm": [
+        0.0,
+        -21.0,
+        0.0
+      ],
+      "outward_normal": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "paper_up_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "paper_right_axis": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "marker_center_mm": [
+        0.0,
+        -21.0,
+        0.0
+      ],
+      "black_border_outer_corners_mm": [
+        [
+          -16.0,
+          -21.0,
+          16.0
+        ],
+        [
+          16.0,
+          -21.0,
+          16.0
+        ],
+        [
+          16.0,
+          -21.0,
+          -16.0
+        ],
+        [
+          -16.0,
+          -21.0,
+          -16.0
+        ]
+      ],
+      "print_pattern_6x6_rows_top_to_bottom_0_black_1_white": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "nominal_probe_assembly_transform": {
+    "status": "VISUALIZATION ONLY - ESTIMATED AND UNCALIBRATED",
+    "from_frame": "marker_cube",
+    "to_frame": "probe_model",
+    "formula": "p_probe_mm = R @ p_marker_cube_mm + t_mm",
+    "R": [
+      [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ]
+    ],
+    "t_mm": [
+      0.0,
+      49.0,
+      -8.0
+    ],
+    "homogeneous_4x4": [
+      [
+        -1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        49
+      ],
+      [
+        0,
+        1,
+        0,
+        -8
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "axis_mapping": {
+      "cube_+X": "probe_-X",
+      "cube_+Y": "probe_+Z",
+      "cube_+Z": "probe_+Y"
+    },
+    "limitations": "Based on CAD assembly pose only. Actual probe seating, cushion compression, marker mounting and remounting change this transform. Obtain the actual rigid transform by measurement/calibration."
+  },
+  "ultrasound_image_plane_calibration": {
+    "provided": false,
+    "note": "Cube tracking provides cube pose. Registration of ultrasound image pixels/plane to the probe requires separate calibration; no image-plane transform or clinical accuracy is claimed."
+  }
+}
