@@ -1,7 +1,39 @@
 [project]
 name = "virtual-patientization-3d"
 version = "0.1.0"
-description = "Add your description here"
+description = "Webcam ArUco tracking of a Vscan Air CL probe with Rerun visualization"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "numpy>=2.2,<3",
+    "opencv-contrib-python>=4.11,<5",
+    "rerun-sdk>=0.29,<0.30",
+    "scipy>=1.15,<2",
+    "trimesh>=4.6,<5",
+]
+
+[project.scripts]
+probe-tracker = "probe_tracking.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/probe_tracking"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "ruff>=0.11,<1",
+]
