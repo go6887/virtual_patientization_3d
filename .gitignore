@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local capture / generated tracking artifacts
+.DS_Store
+output/
+tmp/
+config/camera.json
+*.rrd
