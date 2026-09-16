@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -14,7 +15,11 @@ import trimesh
 from .camera import CameraIntrinsics
 from .diagnostics import REASON_LABELS
 from .geometry import MarkerGeometry
+from .kidney_view import SCAN_STATUS_ENTITY, KidneyView
 from .tracking import Pose
+
+if TYPE_CHECKING:
+    from .kidney_scan import KidneyScan, ScanFrame
 
 
 def load_meshes(path: Path) -> list[tuple[str, rr.Mesh3D]]:
@@ -93,6 +98,7 @@ class RerunViewer:
         spawn: bool = True,
         save_path: Path | None = None,
         demo: bool = False,
+        scan: KidneyScan | None = None,
     ):
         self.geometry = geometry
         self.intrinsics = intrinsics
@@ -141,17 +147,30 @@ class RerunViewer:
             "metrics/reprojection_px", rr.SeriesLines(colors=[255, 184, 90], names="Reprojection RMS (px)"), static=True
         )
         rr.log("metrics/visible_markers", rr.SeriesLines(colors=[84, 212, 172], names="Used markers"), static=True)
+        self.kidney_view = KidneyView(scan) if scan is not None else None
+        scene_contents = ["world/tracked/**", "world/trajectory"]
+        eye_position = [270, -170, -50]
+        look_target = [0, 0, 410]
+        status_views = [rrb.TextDocumentView(name="Tracking status", origin="status")]
+        if scan is not None:
+            scene_contents.append("world/kidney/**")
+            kidney_center = scan.kidney_position
+            look_target = (kidney_center + np.array([0, 0, 410])) * 0.5
+            view_scale = max(1.0, np.linalg.norm(kidney_center - [0, 0, 410]) / 300.0)
+            eye_position = look_target + np.array([195, -125, -335]) * view_scale
+            status_views.append(rrb.TextDocumentView(name="Kidney scan", origin=SCAN_STATUS_ENTITY))
+        status_views.append(rrb.TimeSeriesView(name="Reprojection error", origin="metrics/reprojection_px"))
         rr.send_blueprint(
             rrb.Blueprint(
                 rrb.Vertical(
                     rrb.Horizontal(
                         rrb.Spatial3DView(
-                            name="Probe pose · mm",
+                            name="Probe + kidney · mm" if scan is not None else "Probe pose · mm",
                             origin="world",
-                            contents=["world/tracked/**", "world/trajectory"],
+                            contents=scene_contents,
                             eye_controls=rrb.EyeControls3D(
-                                position=[270, -170, -50],
-                                look_target=[0, 0, 410],
+                                position=eye_position,
+                                look_target=look_target,
                                 eye_up=[0, -1, 0],
                             ),
                         ),
@@ -161,9 +180,8 @@ class RerunViewer:
                         column_shares=[1, 1],
                     ),
                     rrb.Horizontal(
-                        rrb.TextDocumentView(name="Tracking status", origin="status"),
-                        rrb.TimeSeriesView(name="Reprojection error", origin="metrics/reprojection_px"),
-                        column_shares=[1, 1],
+                        *status_views,
+                        column_shares=[1] * len(status_views),
                     ),
                     row_shares=[3, 1],
                 ),
@@ -177,6 +195,8 @@ class RerunViewer:
         rr.log(f"{base}/probe", rr.Transform3D(mat3x3=cube_from_probe[:3, :3], translation=cube_from_probe[:3, 3]))
         for name, mesh in self.probe_meshes:
             rr.log(f"{base}/probe/{name}", mesh)
+        if self.kidney_view is not None:
+            self.kidney_view.log_fan()
         if self.attachment_meshes:
             rr.log(f"{base}/attachment", rr.Transform3D(mat3x3=np.diag([-1.0, 1.0, -1.0]), translation=[0, 0, 21]))
             for name, mesh in self.attachment_meshes:
@@ -204,10 +224,11 @@ class RerunViewer:
         *,
         loss_reason: str = "no_markers",
         diagnostic_summary: str = "",
+        scan_frame: ScanFrame | None = None,
     ):
         rr.set_time("frame", sequence=frame_index)
         rr.set_time("elapsed", duration=timestamp)
-        rr.log("world/camera/image", rr.Image(image_bgr, color_model="BGR").compress(jpeg_quality=85))
+        self.log_image(image_bgr)
         label = "SYNTHETIC DEMO" if self.demo else "WEBCAM / VIDEO"
         intrinsics = "calibrated" if self.intrinsics.calibrated else "approximate (FOV estimate)"
         if pose is None:
@@ -242,6 +263,22 @@ class RerunViewer:
         if diagnostic_summary:
             text += f"\n\n{diagnostic_summary}"
         rr.log("status", rr.TextDocument(text, media_type=rr.MediaType.MARKDOWN))
+        if scan_frame is not None:
+            self.log_scan_frame(scan_frame)
+
+    def log_image(self, image_bgr: np.ndarray) -> None:
+        """Replace the preview image without advancing the current timelines."""
+        # OpenCV encodes the existing BGR buffer directly, avoiding Rerun's
+        # Arrow-to-PIL image conversion on every tracking frame.
+        ok, encoded = cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ok:
+            raise RuntimeError("Could not encode the camera image as JPEG")
+        rr.log("world/camera/image", rr.EncodedImage(contents=encoded.tobytes(), media_type="image/jpeg"))
+
+    def log_scan_frame(self, scan_frame: ScanFrame) -> None:
+        """Refresh scan colors/status, including a reset on the current frame."""
+        if self.kidney_view is not None:
+            self.kidney_view.log_frame(scan_frame)
 
     def close(self):
         rr.get_global_data_recording().flush()

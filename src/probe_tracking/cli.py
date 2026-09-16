@@ -12,6 +12,7 @@ import numpy as np
 
 from .camera import CameraIntrinsics
 from .diagnostics import REASON_LABELS, TrackingDiagnostics
+from .frame_worker import FrameWorker
 from .geometry import MarkerGeometry
 from .tracking import PoseSmoother, Tracker
 
@@ -19,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / "assets"
 DEFAULT_GEOMETRY = ASSETS / "Vscan_marker_attachment/marker_geometry_42mm.json"
 DEFAULT_MODEL = ASSETS / "Vscan_Air_CL/Vscan_Air_CL.obj"
+DEFAULT_KIDNEY = ASSETS / "kidney/kidney_right.stl"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,6 +47,27 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--snapshot", type=Path, help="Write the final annotated frame as an image")
         p.add_argument(
             "--diagnostics", type=Path, help="Append per-frame loss reasons and marker corners to a JSONL file"
+        )
+        p.add_argument("--kidney", action="store_true", help="Show a right kidney and track scan coverage")
+        p.add_argument(
+            "--kidney-controls", action=argparse.BooleanOptionalAction, default=None,
+            help="Open live kidney position/size controls (default: with --kidney unless --no-viewer)",
+        )
+        p.add_argument("--kidney-scale", type=float, default=1.0, help="Kidney size multiplier, 0.1–5 (default: 1)")
+        p.add_argument(
+            "--kidney-position-mm", type=float, nargs=3, default=(0, -180, 400), metavar=("X", "Y", "Z"),
+            help="Kidney bounding-box center in camera coordinates (mm; default: 0 -180 400)",
+        )
+        p.add_argument(
+            "--kidney-rotation-deg", type=float, nargs=3, default=(0, 0, 0), metavar=("RX", "RY", "RZ"),
+            help="Rotate about the kidney center, fixed axes X then Y then Z (degrees)",
+        )
+        p.add_argument("--voxel-mm", type=float, default=3, help="Kidney cube edge length, 1–10 mm (default: 3)")
+        p.add_argument(
+            "--beam-depth-cm", type=float, default=15, help="Scan depth from the curved lens, >0 to 24 cm (default: 15)"
+        )
+        p.add_argument(
+            "--beam-angle-deg", type=float, default=60, help="Scan angle, >0 to 60 degrees (default: 60)"
         )
         if command == "track":
             source = p.add_mutually_exclusive_group()
@@ -81,6 +104,7 @@ def annotate(
     demo: bool,
     loss_reason: str = "no_markers",
     diagnostic_summary: str = "",
+    scan_summary: str = "",
 ) -> np.ndarray:
     result = frame.copy()
     if detections:
@@ -105,7 +129,8 @@ def annotate(
         color = (100, 245, 140)
     else:
         text, color = f"LOST - {REASON_LABELS.get(loss_reason, loss_reason)}", (80, 160, 255)
-    cv2.rectangle(result, (0, 0), (result.shape[1], 106 if diagnostic_summary else 78), (26, 30, 36), -1)
+    banner_height = 78 + 28 * (bool(diagnostic_summary) + bool(scan_summary))
+    cv2.rectangle(result, (0, 0), (result.shape[1], banner_height), (26, 30, 36), -1)
     cv2.putText(result, text, (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.65, color, 2, cv2.LINE_AA)
     label = (
         "SYNTHETIC DEMO"
@@ -126,7 +151,22 @@ def annotate(
         cv2.putText(
             result, diagnostic_summary, (18, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (220, 225, 235), 1, cv2.LINE_AA
         )
+    if scan_summary:
+        cv2.putText(
+            result, scan_summary, (18, 118 if diagnostic_summary else 90),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.44, (140, 240, 180), 1, cv2.LINE_AA,
+        )
     return result
+
+
+def kidney_summary(scan_frame) -> str:
+    if scan_frame is None:
+        return ""
+    state = "UNAVAILABLE" if not scan_frame.tracked else ("HIT" if scan_frame.hit_count else "MISS")
+    return (
+        f"KIDNEY {state}: {scan_frame.hit_count} cubes | "
+        f"history {scan_frame.history_count}/{len(scan_frame.history_mask)} ({scan_frame.coverage_percent:.1f}%)"
+    )
 
 
 def run_tracking(args: argparse.Namespace) -> int:
@@ -141,11 +181,51 @@ def run_tracking(args: argparse.Namespace) -> int:
         raise ValueError("smooth must be in (0, 1]")
     if args.no_viewer and args.save is None:
         raise ValueError("--no-viewer requires --save output/session.rrd")
+    if args.kidney_controls and not args.kidney:
+        raise ValueError("--kidney-controls requires --kidney")
+    use_controls = args.kidney and (
+        not args.no_viewer if args.kidney_controls is None else args.kidney_controls
+    )
     geometry = MarkerGeometry.load(args.geometry)
+    scan = None
+    scan_frame = None
+    if args.kidney:
+        from .kidney_scan import KidneyScan
+
+        scan = KidneyScan.load(
+            DEFAULT_KIDNEY,
+            args.model,
+            position_mm=args.kidney_position_mm,
+            rotation_deg=args.kidney_rotation_deg,
+            voxel_mm=args.voxel_mm,
+            beam_depth_cm=args.beam_depth_cm,
+            beam_angle_deg=args.beam_angle_deg,
+            scale=args.kidney_scale,
+        )
     demo = args.command == "demo"
     capture = None
     viewer = None
     diagnostics = None
+    controls = None
+    worker = None
+    pending_placement = None
+    pending_reset = False
+    stop_requested = False
+
+    def request_placement(position, scale):
+        nonlocal pending_placement
+        # The panel accumulates every button step immediately. Keep only its
+        # newest absolute placement so dragging cannot queue obsolete renders.
+        pending_placement = (position, scale)
+
+    def request_reset():
+        nonlocal pending_reset
+        pending_reset = True
+
+    def request_stop():
+        nonlocal stop_requested
+        stop_requested = True
+
     static_frame = None
     frame_count = tracked_count = 0
     try:
@@ -206,8 +286,86 @@ def run_tracking(args: argparse.Namespace) -> int:
                 "geometry_corners_mm": {str(i): points.tolist() for i, points in geometry.markers.items()},
             },
         )
-        viewer = RerunViewer(geometry, args.model, intrinsics, spawn=not args.no_viewer, save_path=args.save, demo=demo)
+        viewer = RerunViewer(
+            geometry, args.model, intrinsics, spawn=not args.no_viewer, save_path=args.save, demo=demo, scan=scan
+        )
+        if use_controls:
+            from .kidney_controls import KidneyControls
+
+            controls = KidneyControls(
+                position_mm=scan.kidney_position,
+                scale=scan.kidney_scale,
+                on_change=request_placement,
+                on_reset_history=request_reset,
+                on_stop=request_stop,
+            )
+        worker = FrameWorker(None if controls is None else controls.pump)
+
+        def read_and_track(frame_index, timestamp):
+            if demo:
+                rotation, translation = demo_pose(timestamp)
+                frame = render_markers(geometry, intrinsics.camera_matrix, rotation, translation, width, height)
+            elif frame_index == 0 or capture is None:
+                frame = static_frame
+            else:
+                ok, frame = capture.read()
+                if not ok:
+                    if args.video:
+                        return None
+                    raise RuntimeError("Webcam stopped returning frames")
+            if frame.shape[:2] != (height, width):
+                raise RuntimeError(
+                    "Capture resolution changed during tracking; restart and recalibrate at the new resolution"
+                )
+            frame = cv2.remap(frame, *maps, cv2.INTER_LINEAR)
+            detections = tracker.detect(frame)
+            return frame, detections, tracker.estimate(detections)
+
+        def update_scene(frame_index, timestamp, frame, detections, pose, display_pose, placement, reset_history):
+            current_scan = None
+            if scan is not None:
+                if placement is not None:
+                    position, scale = placement
+                    scan.set_placement(position_mm=position, scale=scale)
+                camera_from_probe = None if display_pose is None else display_pose.matrix @ geometry.cube_from_probe
+                current_scan = scan.update(camera_from_probe)
+                if reset_history:
+                    current_scan = scan.reset_history()
+            diagnostics.record(frame_index, timestamp, tracker, detections, pose)
+            summary = diagnostics.recent_summary()
+            annotated = annotate(
+                frame, detections, pose, geometry, intrinsics, demo=demo,
+                loss_reason=tracker.last_reason, diagnostic_summary=summary,
+                scan_summary=kidney_summary(current_scan),
+            )
+            viewer.log_frame(
+                frame_index, timestamp, annotated, detections, display_pose,
+                loss_reason=tracker.last_reason, diagnostic_summary=summary, scan_frame=current_scan,
+            )
+            return annotated, current_scan
+
+        def reset_scene(frame, detections, pose):
+            current_scan = scan.reset_history()
+            # All temporal logging, including a preview reset, uses the same
+            # worker so it retains the current frame's Rerun timelines.
+            viewer.log_scan_frame(current_scan)
+            annotated = annotate(
+                frame, detections, pose, geometry, intrinsics, demo=demo,
+                loss_reason=tracker.last_reason, diagnostic_summary=diagnostics.recent_summary(),
+                scan_summary=kidney_summary(current_scan),
+            )
+            viewer.log_image(annotated)
+            return annotated, current_scan
+
         print("Tracking started. Stop with Ctrl+C" + (" or Q/Esc in preview." if args.preview else "."), flush=True)
+        if controls is not None:
+            print("Kidney controls: move X/Y/Z or resize the model. Closing the controls stops tracking.", flush=True)
+        if scan is not None:
+            print(
+                "Kidney: green = current hit; yellow = scan history."
+                + (" Press R in preview to clear history." if args.preview else ""),
+                flush=True,
+            )
         fps = args.fps
         if not demo and args.video:
             reported = capture.get(cv2.CAP_PROP_FPS)
@@ -217,27 +375,17 @@ def run_tracking(args: argparse.Namespace) -> int:
         last_status = None
         last_report = start
         while args.max_frames == 0 or frame_count < args.max_frames:
+            if controls is not None:
+                controls.pump()
+            if stop_requested:
+                break
             timestamp = (
                 frame_count / fps if demo or (not demo and (args.video or args.image)) else time.perf_counter() - start
             )
-            if demo:
-                rotation, translation = demo_pose(timestamp)
-                frame = render_markers(geometry, intrinsics.camera_matrix, rotation, translation, width, height)
-            elif frame_count == 0 or capture is None:
-                frame = static_frame
-            else:
-                ok, frame = capture.read()
-                if not ok:
-                    if args.video:
-                        break
-                    raise RuntimeError("Webcam stopped returning frames")
-            if frame.shape[:2] != (height, width):
-                raise RuntimeError(
-                    "Capture resolution changed during tracking; restart and recalibrate at the new resolution"
-                )
-            frame = cv2.remap(frame, *maps, cv2.INTER_LINEAR)
-            detections = tracker.detect(frame)
-            pose = tracker.estimate(detections)
+            result = worker.run(read_and_track, frame_count, timestamp)
+            if result is None or stop_requested:
+                break
+            frame, detections, pose = result
             if pose is not None:
                 display_pose = smoother.update(pose)
                 tracked_count += 1
@@ -245,26 +393,11 @@ def run_tracking(args: argparse.Namespace) -> int:
                 smoother.reset()
                 tracker.reset()
                 display_pose = None
-            diagnostics.record(frame_count, timestamp, tracker, detections, pose)
-            summary = diagnostics.recent_summary()
-            annotated = annotate(
-                frame,
-                detections,
-                pose,
-                geometry,
-                intrinsics,
-                demo=demo,
-                loss_reason=tracker.last_reason,
-                diagnostic_summary=summary,
-            )
-            viewer.log_frame(
-                frame_count,
-                timestamp,
-                annotated,
-                detections,
-                display_pose,
-                loss_reason=tracker.last_reason,
-                diagnostic_summary=summary,
+            placement, reset_history = pending_placement, pending_reset
+            pending_placement, pending_reset = None, False
+            annotated, scan_frame = worker.run(
+                update_scene, frame_count, timestamp, frame, detections, pose, display_pose,
+                placement, reset_history,
             )
             status = "TRACKING" if pose else "LOST"
             if status != last_status:
@@ -280,21 +413,39 @@ def run_tracking(args: argparse.Namespace) -> int:
                 print(diagnostics.summary(), flush=True)
                 last_report = now
             frame_count += 1
-            if args.snapshot:
-                snapshot = annotated
             if args.preview:
-                cv2.imshow("Vscan probe tracking - Q to stop", annotated)
-                if cv2.waitKey(1) & 0xFF in (27, ord("q")):
+                window = "Vscan probe tracking - Q to stop" + (" - R to reset history" if scan is not None else "")
+                cv2.imshow(window, annotated)
+                key = cv2.waitKey(1) & 0xFF
+                if key in (ord("r"), ord("R")) and scan is not None:
+                    annotated, scan_frame = worker.run(reset_scene, frame, detections, pose)
+                    cv2.imshow(window, annotated)
+                if args.snapshot:
+                    snapshot = annotated
+                if key in (27, ord("q")):
                     break
+            elif args.snapshot:
+                snapshot = annotated
             if not demo and args.image:
                 break
             if not args.no_realtime and (demo or (not demo and args.video)):
                 delay = start + frame_count / fps - time.perf_counter()
-                if delay > 0:
+                if controls is not None:
+                    # Keep serving controls between frames as well as while
+                    # the worker is capturing, computing, or recording a frame.
+                    while delay > 0 and not stop_requested:
+                        controls.pump()
+                        time.sleep(min(delay, 0.01))
+                        delay = start + frame_count / fps - time.perf_counter()
+                elif delay > 0:
                     time.sleep(min(delay, 1.0))
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
+        if controls is not None:
+            controls.close()
+        if worker is not None:
+            worker.close()
         if capture is not None:
             capture.release()
         if diagnostics is not None:
@@ -309,6 +460,8 @@ def run_tracking(args: argparse.Namespace) -> int:
         if not cv2.imwrite(str(args.snapshot), snapshot):
             raise RuntimeError(f"Could not save snapshot: {args.snapshot}")
     print(f"Processed {frame_count} frames; tracked {tracked_count}.")
+    if scan_frame is not None:
+        print(kidney_summary(scan_frame))
     if args.save:
         print(f"Rerun recording: {args.save.resolve()}")
     if args.diagnostics:
